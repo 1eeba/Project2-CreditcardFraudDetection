@@ -1,0 +1,295 @@
+---
+title: "CreditcardFraudDetection-Leeba"
+author: "Leeba Ann Varghese"
+date: "2022-10-06"
+output: pdf_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+## R Markdown
+# Introduction
+
+As the Banking industry is advancing to digitalization, the importance of cybersecurity is becoming crucial. Records show that the risk factors and fraud transactions are increasing even with the strict authentication mechanisms implemented in the banking applications today. As such, there is an urgent need to develop and relook into the current fraud detection mechanisms. In this project, we will use the credit card transactions dataset provided by dataflair (Credit-Card-Dataset.zip - Google Drive) .This data is been uploaded to my GitHub repository .On running the code ,the data will be automatically downloaded ,unzipped and stored into an R dataframe.
+
+# Project Objective
+
+The objective of this project is to analyze the Credit card transactions data and prepare a predictive model to identify and predict fraudulent transactions. I have used 3 models in this project.
+1. Logistic Regression Model
+2. Decision Tree Model
+3. Random Forest Model
+
+# Load required packages and libraries
+
+if(!require(ranger)) install.packages("ranger", repos = "http://cran.us.r-project.org")
+if(!require(caret)) install.packages("caret", repos = "http://cran.us.r-project.org")
+if(!require(data.table)) install.packages("data.table", repos = "http://cran.us.r-project.org")
+if(!require(caTools)) install.packages("caTools", repos = "http://cran.us.r-project.org")
+if(!require(tidyverse)) install.packages("tidyverse", repos = "http://cran.us.r-project.org")
+install.packages('rpart.plot')
+install.packages('randomForest')
+
+
+library(rpart)
+library(rpart.plot)
+library(randomForest)
+library(ranger)
+library(caret)
+library(data.table)
+library(caTools)
+library(dplyr)
+library(tidyverse)
+library(pROC)
+
+
+# 	DATA CLEANUP - PREPARATION OF DATA
+In this project, we have used the Credit card transactions dataset available in the  dataflair website . This data is been uploaded to my GitHub repository.
+
+On running the code, the data will be automatically downloaded, unzipped and stored into an R dataframe.
+
+# Load Credit card transactions data from Github repository
+
+
+#Set timeout seconds to 150 incase if the download takes more than 60 seconds
+getOption('timeout')
+options(timeout=150)
+
+# Create temp file and download zip file containing dataset automatically
+dw <- tempfile()
+download.file("https://github.com/1eeba/Project2-CreditcardFraudDetection/raw/master/creditcard.zip", dw)
+
+
+
+# Unzip the files
+
+unzip(dw)
+
+#Read the files 
+creditcard_data <- read_csv("creditcard.csv")
+
+#View the loaded data
+creditcard_data
+
+#Scale the amount fields
+scale(creditcard_data$Amount)
+
+
+#	DATA MODELING 
+
+#Splitting the data
+
+The data is split into test set and training set using the split function with a split ratio of 0.80.
+
+library(caTools)
+set.seed(123)
+data_sample = sample.split(creditcard_data$Class,SplitRatio=0.80)
+cc_train_set = subset(creditcard_data,data_sample==TRUE)
+cc_test_set = subset(creditcard_data,data_sample==FALSE)
+
+
+
+#Scaling the amount field in both the sets
+
+Using the scale() function, we will standardize the Amount field in both the test and train sets so that there are no extreme values.
+
+scale(cc_test_set$Amount)
+scale(cc_train_set$Amount)
+
+
+#  Data Visualization
+#Dimensions of creditcard dataset
+
+dim(creditcard_data)
+
+#Structure of creditcard dataset
+str(creditcard_data)
+
+
+#First 6 rows
+
+head(creditcard_data)
+
+#Number of Fraudulent and non-fraudulent transactions in the dataset
+
+table(creditcard_data$Class)
+
+We see that there are 492 fraudulent transactions among the total set of 284,807 rows.
+
+# Variance of amount
+var(creditcard_data$Amount)
+
+#Standard deviation of amount
+sd(creditcard_data$Amount)
+
+
+#Summary of amount
+
+summary(creditcard_data$Amount)
+
+#Distribution of transactions across time - Transaction versus time
+
+creditcard_data %>%
+  ggplot(aes(x = Time, fill = factor(Class))) + 
+  geom_histogram(bins = 100) + 
+  labs(x = "Time)", y = "Number of transactions", title = "Distribution of transactions across time") +
+  facet_grid(Class ~ ., scales = 'free_y') + theme()
+  
+We see that time doesn’t influence much in detecting fraudulent transactions.
+
+#Plot of amount and class
+plot(creditcard_data$Amount,creditcard_data$Class)
+
+
+#Histogram of Class
+hist(creditcard_data$Class)
+
+
+#Histogram of Amount
+hist(creditcard_data$Amount)
+
+#Histogram of Amount <1000
+
+hist(creditcard_data$Amount[dataset$Amount < 100])
+
+#Distribution of Amount
+
+ggplot(creditcard_data, aes(x=Amount))+
+  scale_x_continuous()+
+  geom_density(fill = "blue", alpha = 0.2)+
+  theme_minimal()+
+  theme(plot.background = element_rect("white"),
+        panel.background = element_rect("white"))+
+  labs(title = "Distribution of Amount")+
+  theme(plot.title=element_text(face='bold',color='black',hjust=0.5,size=12))+
+  theme(axis.title.y = element_blank(), axis.text.y = element_blank(), axis.ticks.y = element_blank())+
+  xlim(0,1000)
+
+#Histogram of Transaction time and Amount
+
+ggplot(creditcard_data, aes(x=Time))+
+  scale_x_continuous()+
+  geom_density(fill = "blue", alpha = 0.2)+
+  theme_minimal()+
+  theme(plot.background = element_rect("white"),
+        panel.background = element_rect("white"))+
+  labs(title = "Distribution of Time")+
+  theme(plot.title=element_text(face='bold',color='black',hjust=0.5,size=12))+
+  theme(axis.title.y = element_blank(), axis.text.y = element_blank(), axis.ticks.y = element_blank())
+
+
+#Plot showing correlation of variables
+
+
+correlation <- cor(creditcard_data[, -1], method = "pearson")
+corrplot(correlation, number.cex = 1, method = "color", type = "full", tl.cex=0.7, tl.col="black")
+
+# Evauvation Metrics
+
+In this project we have used 2 metrics.
+
+ROC curves are used to characterize the sensitivity/specificity. We use the area under the ROC to measure the accuracy of our model.
+
+Confusion Matrix gives us the predictions against actual values. We use two dimensional matrices here We get a picture of the specificity and sensitivity of our model using Confusing Matrix.
+
+
+# Data Modeling
+
+#Model 1 : Logistic Regression model
+Logistic regression model is a commonly used model to calculate or predict the probability of a binary (yes/no) event occurring
+We first build our model on our training set - cc_train_set.
+
+
+#Build model on train set
+cc_train_set$Class <-factor(cc_train_set$Class)
+Model1_Logistic_Model=glm(Class~.,cc_train_set,family=binomial())
+
+
+
+#View the summary
+
+summary(Model1_Logistic_Model)
+
+#Plot the result
+plot(Model1_Logistic_Model)
+
+
+#Make predictions
+library(pROC)
+model1_predictions <- predict(Model1_Logistic_Model, cc_train_set, type='response')
+table(cc_train_set$Class, model1_predictions)
+
+#View area under curve
+auc.gbm = roc(cc_train_set$Class, model1_predictions, plot = TRUE, col = "blue")
+
+
+#Applying the model in Test set
+Now, let us apply this model in test set and see the Confusion Matrix.
+
+#Apply in test set
+model1_predictions_test <- predict(Model1_Logistic_Model, newdata = cc_test_set, type = "response")
+
+
+pred <- ifelse(model1_predictions_test > 0.5, 1, 0)
+
+
+
+
+#View Confusion Matrix
+table(cc_test_set$Class, pred)
+
+
+#Model 2 -Decision tree model
+Decision Trees are useful supervised Machine learning algorithms that have the ability to perform both regression and classification tasks. It is characterized by nodes and branches, where the tests on each attribute are represented at the nodes, the outcome of this procedure is represented at the branches and the class labels are represented at the leaf nodes.
+
+
+#Build model on train set
+decisionTree_model <- rpart(Class ~ . , cc_train_set, method = 'class',minbucket=10)
+prp(decisionTree_model)
+
+
+#Applying on test set
+predicted_val <- predict(decisionTree_model, cc_test_set, type = 'class')
+probability <- predict(decisionTree_model, cc_test_set, type = 'prob')
+prp(decisionTree_model)
+
+#Viewing the Confusion matrix
+
+
+confusionMatrix(cc_test_set$Class, predicted_val)
+
+
+
+
+
+#Model 3 -Random forest model
+
+Random forest model is classification algorithm consisting of many decision trees. It uses bagging and feature randomness when building each individual tree to try to create an uncorrelated forest of trees whose prediction by committee is more accurate than that of any individual tree.
+We will first build this model on our train set, and then apply it on the test set.
+
+#Build model on train set
+set.seed(10)
+model3_randomforest <- randomForest(Class ~ ., data = cc_train_set[1:10000,],ntree = 2000, nodesize = 20)
+
+#Applying the model to test set
+model3_predict <- predict(model3_randomforest, newdata = cc_test_set)
+
+#Plot the result
+varImpPlot(model3_randomforest)
+#Viewing the Confusion Matrix
+confusionMatrix(cc_test_set$Class, model3_predict)
+
+
+
+#Results:
+#Mean of Class field in all the 3 models
+
+Model1 <- mean(cc_test_set$Class == pred)
+Model2 <- mean(cc_test_set$Class == predicted_val)
+Model3<- mean(cc_test_set$Class == model3_predict)
+
+Model1
+Model2
+Model3
+
